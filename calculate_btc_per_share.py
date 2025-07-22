@@ -433,9 +433,9 @@ def plot_quarterly_metrics(quarterly_data, title_prefix="MicroStrategy"):
 
 def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False):
     """
-    Plot Bitcoin Yield and P/BYD ratios (quarterly or monthly)
+    Plot Bitcoin Yield, P/BYD ratios, and Stock Price (quarterly or monthly)
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
 
     period_key = 'month_ends' if is_monthly else 'quarter_ends'
     period_label = 'Monthly' if is_monthly else 'Quarterly'
@@ -479,9 +479,25 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False):
 
     ax2.legend()
 
-    # Format x-axis with period labels
-    ax2.set_xticks(dates)
-    ax2.set_xticklabels(labels, rotation=45, ha='right')
+    # Plot Stock Price
+    ax3.plot(dates, metrics_data['stock_prices'], 'go-', linewidth=2, markersize=8)
+    ax3.set_ylabel('Stock Price ($)', fontsize=12)
+    ax3.set_title(f'{title_prefix} - {period_label} Stock Price', fontsize=14)
+    ax3.grid(True, alpha=0.3)
+    
+    # Add value labels on stock price points
+    for i, (date, price, label) in enumerate(zip(dates, metrics_data['stock_prices'], labels)):
+        if price is not None:
+            ax3.annotate(f'${price:.0f}',
+                        (date, price),
+                        textcoords="offset points",
+                        xytext=(0,10),
+                        ha='center',
+                        fontsize=9)
+
+    # Format x-axis with period labels (now on ax3 since it's the bottom plot)
+    ax3.set_xticks(dates)
+    ax3.set_xticklabels(labels, rotation=45, ha='right')
 
     # Add mNAV values as text
     fig.text(0.02, 0.98, 'mNAV values:', transform=fig.transFigure, fontsize=10, verticalalignment='top')
@@ -651,7 +667,7 @@ def plot_multiple_entities(all_metrics, is_monthly=False):
     """
     Plot metrics for multiple entities on the same charts (quarterly or monthly)
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
     # Define colors for different entities
     colors = ['b', 'r', 'g', 'orange', 'purple', 'brown', 'pink', 'gray']
@@ -722,6 +738,33 @@ def plot_multiple_entities(all_metrics, is_monthly=False):
                                 ha='center',
                                 fontsize=8,
                                 color=color)
+        
+        # Plot Stock Price
+        ax3.plot(dates, metrics_data['stock_prices'],
+                color=color, marker=marker, linestyle='-',
+                linewidth=2, markersize=8, label=f'{company_name} - Stock Price')
+        
+        # Add value labels (selective to avoid clutter)
+        if len(dates) <= 6:
+            for i, (date, price) in enumerate(zip(dates, metrics_data['stock_prices'])):
+                if price is not None:
+                    ax3.annotate(f'${price:.0f}',
+                                (date, price),
+                                textcoords="offset points",
+                                xytext=(0,10),
+                                ha='center',
+                                fontsize=8,
+                                color=color)
+        else:
+            for i in [0, len(dates)-1]:
+                if metrics_data['stock_prices'][i] is not None:
+                    ax3.annotate(f'${metrics_data["stock_prices"][i]:.0f}',
+                                (dates[i], metrics_data['stock_prices'][i]),
+                                textcoords="offset points",
+                                xytext=(0,10),
+                                ha='center',
+                                fontsize=8,
+                                color=color)
 
     # Configure Bitcoin Yield plot
     ax1.set_ylabel('Bitcoin Yield (%)', fontsize=12)
@@ -737,7 +780,13 @@ def plot_multiple_entities(all_metrics, is_monthly=False):
     ax2.axhline(y=2, color='gray', linestyle='--', alpha=0.5, label='2 Years of Yield')
     ax2.legend(loc='best', fontsize=10)
 
-    # Format x-axis with period labels
+    # Configure Stock Price plot
+    ax3.set_ylabel('Stock Price ($)', fontsize=12)
+    ax3.set_title(f'{period_label} Stock Price Comparison', fontsize=14)
+    ax3.grid(True, alpha=0.3)
+    ax3.legend(loc='best', fontsize=10)
+
+    # Format x-axis with period labels (now on ax3 since it's the bottom plot)
     all_dates = []
     all_labels = []
     for metrics_data, _ in all_metrics:
@@ -749,8 +798,8 @@ def plot_multiple_entities(all_metrics, is_monthly=False):
     unique_data = sorted(set(zip(all_dates, all_labels)))
     if unique_data:
         dates, labels = zip(*unique_data)
-        ax2.set_xticks(dates)
-        ax2.set_xticklabels(labels, rotation=45, ha='right')
+        ax3.set_xticks(dates)
+        ax3.set_xticklabels(labels, rotation=45, ha='right')
 
     plt.tight_layout()
     plt.show()
