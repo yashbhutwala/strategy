@@ -109,6 +109,14 @@ def get_quarter_dates(year, quarter):
         end = datetime(year, 12, 31, tzinfo=timezone.utc)
     return start, end
 
+def get_month_dates(year, month):
+    """Get start and end dates for a given month"""
+    from calendar import monthrange
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    last_day = monthrange(year, month)[1]
+    end = datetime(year, month, last_day, tzinfo=timezone.utc)
+    return start, end
+
 def find_stock_price_for_date(data, target_date):
     """Find stock price for a specific date"""
     target_timestamp = int(target_date.timestamp() * 1000)
@@ -224,6 +232,105 @@ def find_max_mnav_for_quarter(data, start_date, end_date):
                 max_mnav = nav_mult
 
     return max_mnav if max_mnav > 0 else None
+
+def calculate_monthly_metrics(data, start_date, end_date):
+    """
+    Calculate monthly Bitcoin Yield and P/BYD ratios
+
+    Returns:
+        dict with month_ends, btc_yields, mnavs, p_byds, stock_prices, btc_balances, btc_per_shares
+    """
+    month_ends = []
+    btc_yields = []
+    annualized_yields = []
+    mnavs = []
+    mnavs_max = []
+    p_byds = []
+    month_labels = []
+    stock_prices = []
+    btc_balances = []
+    btc_per_shares = []
+
+    current_date = start_date
+    today = datetime.now(timezone.utc)
+
+    while current_date <= end_date and current_date <= today:
+        year = current_date.year
+        month = current_date.month
+
+        # Get month boundaries
+        m_start, m_end = get_month_dates(year, month)
+
+        # Skip incomplete months
+        if m_end > today:
+            break
+
+        # Create month label
+        month_name = m_start.strftime('%b')
+        label = f"{month_name} {year}"
+
+        # Calculate BTC Yield for the month
+        yield_result = calculate_btc_yield(data, m_start, m_end)
+        if yield_result[0] is None:
+            # Skip this month if no yield data available
+            # Move to next month
+            if month == 12:
+                current_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+            else:
+                current_date = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+            continue
+
+        btc_yield, annual_yield, (start_bps, end_bps) = yield_result
+
+        # Get both max and month-end mNAV
+        mnav_max = find_max_mnav_for_quarter(data, m_start, m_end)
+        mnav_end = find_mnav_for_date(data, m_end)
+
+        # Get stock price at month end
+        stock_price = find_stock_price_for_date(data, m_end)
+
+        # Get BTC balance at month end
+        btc_balance = find_btc_balance_for_date(data, m_end)
+
+        # Calculate BTC per share
+        btc_per_share = end_bps if end_bps is not None else None
+
+        # Calculate P/BYD ratio if we have positive annual yield
+        if annual_yield and annual_yield > 0 and mnav_end:
+            p_byd, _, _ = calculate_p_byd_ratio(mnav_end, annual_yield)
+        else:
+            p_byd = None
+
+        # Store results
+        month_ends.append(m_end)
+        btc_yields.append(btc_yield)
+        annualized_yields.append(annual_yield)
+        mnavs.append(mnav_end)
+        mnavs_max.append(mnav_max)
+        p_byds.append(p_byd)
+        month_labels.append(label)
+        stock_prices.append(stock_price)
+        btc_balances.append(btc_balance)
+        btc_per_shares.append(btc_per_share)
+
+        # Move to next month
+        if month == 12:
+            current_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            current_date = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+
+    return {
+        'labels': month_labels,
+        'month_ends': month_ends,
+        'btc_yields': btc_yields,
+        'annualized_yields': annualized_yields,
+        'mnavs': mnavs,
+        'mnavs_max': mnavs_max,
+        'p_byds': p_byds,
+        'stock_prices': stock_prices,
+        'btc_balances': btc_balances,
+        'btc_per_shares': btc_per_shares
+    }
 
 def calculate_quarterly_metrics(data, start_date, end_date):
     """
@@ -378,14 +485,15 @@ def plot_quarterly_metrics(quarterly_data, title_prefix="MicroStrategy"):
     plt.subplots_adjust(left=0.15)  # Make room for mNAV text
     plt.show()
 
-def export_to_csv(all_metrics_data, start_date, end_date):
+def export_to_csv(all_metrics_data, start_date, end_date, is_monthly=False):
     """
     Export metrics data to CSV files with timestamp
 
     Args:
-        all_metrics_data: List of tuples (quarterly_metrics, company_name, data)
+        all_metrics_data: List of tuples (metrics, company_name, data)
         start_date: Start date for the analysis
         end_date: End date for the analysis
+        is_monthly: Whether the data is monthly or quarterly
 
     Returns:
         filenames: List of created CSV filenames
@@ -394,43 +502,59 @@ def export_to_csv(all_metrics_data, start_date, end_date):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filenames = []
 
-    for quarterly_metrics, company_name, data in all_metrics_data:
-        if len(quarterly_metrics['quarter_ends']) == 0:
+    period_key = 'month_ends' if is_monthly else 'quarter_ends'
+    period_label = 'Month' if is_monthly else 'Quarter'
+    period_end_label = 'M-end mNAV' if is_monthly else 'Q-end mNAV'
+    
+    for metrics, company_name, data in all_metrics_data:
+        if len(metrics.get(period_key, [])) == 0:
             continue
 
         # Create DataFrame for this company
         df_data = {
-            'Quarter': quarterly_metrics['labels'],
-            'Total BTC': quarterly_metrics['btc_balances'],
-            'Max mNAV': quarterly_metrics['mnavs_max'],
-            'Q-end mNAV': quarterly_metrics['mnavs'],
-            'BTC/Share': quarterly_metrics['btc_per_shares'],
-            'BTC Yield (%)': quarterly_metrics['btc_yields'],
-            'Ann. Yield (%)': quarterly_metrics['annualized_yields'],
-            'P/BYD': quarterly_metrics['p_byds']
+            period_label: metrics['labels'],
+            'Total BTC': metrics['btc_balances'],
+            'Max mNAV': metrics['mnavs_max'],
+            period_end_label: metrics['mnavs'],
+            'BTC/Share': metrics['btc_per_shares'],
+            'BTC Yield (%)': metrics['btc_yields'],
+            'Ann. Yield (%)': metrics['annualized_yields'],
+            'P/BYD': metrics['p_byds']
         }
 
         df = pd.DataFrame(df_data)
 
         # Calculate overall metrics
-        if len(quarterly_metrics['quarter_ends']) > 0:
-            first_q_year = int(quarterly_metrics['labels'][0].split()[1])
-            first_q_num = int(quarterly_metrics['labels'][0].split()[0][1])
-            first_q_start, _ = get_quarter_dates(first_q_year, first_q_num)
-            last_q_end = quarterly_metrics['quarter_ends'][-1]
+        if len(metrics[period_key]) > 0:
+            if is_monthly:
+                # For monthly, parse month name and year
+                first_label_parts = metrics['labels'][0].split()
+                first_month_name = first_label_parts[0]
+                first_year = int(first_label_parts[1])
+                # Convert month name to number
+                month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                first_month = month_names.index(first_month_name) + 1
+                first_period_start, _ = get_month_dates(first_year, first_month)
+            else:
+                # For quarterly
+                first_q_year = int(metrics['labels'][0].split()[1])
+                first_q_num = int(metrics['labels'][0].split()[0][1])
+                first_period_start, _ = get_quarter_dates(first_q_year, first_q_num)
+            
+            last_period_end = metrics[period_key][-1]
 
-            overall_result = calculate_btc_yield(data, first_q_start, last_q_end)
+            overall_result = calculate_btc_yield(data, first_period_start, last_period_end)
             if overall_result[0] is not None:
                 overall_btc_yield, overall_annual_yield, _ = overall_result
-                last_mnav_at_end = find_mnav_for_date(data, last_q_end)
+                last_mnav_at_end = find_mnav_for_date(data, last_period_end)
                 overall_p_byd, _, _ = calculate_p_byd_ratio(last_mnav_at_end, overall_annual_yield) if overall_annual_yield and overall_annual_yield > 0 and last_mnav_at_end else (None, None, None)
 
                 # Add overall row
                 overall_row = {
-                    'Quarter': 'OVERALL',
+                    period_label: 'OVERALL',
                     'Total BTC': '',
                     'Max mNAV': '',
-                    'Q-end mNAV': '',
+                    period_end_label: '',
                     'BTC/Share': '',
                     'BTC Yield (%)': overall_btc_yield,
                     'Ann. Yield (%)': overall_annual_yield,
@@ -450,8 +574,8 @@ def export_to_csv(all_metrics_data, start_date, end_date):
     if len(all_metrics_data) > 1:
         combined_filename = f"btc_metrics_combined_{timestamp}.csv"
         with open(combined_filename, 'w') as f:
-            for i, (quarterly_metrics, company_name, data) in enumerate(all_metrics_data):
-                if len(quarterly_metrics['quarter_ends']) == 0:
+            for i, (metrics, company_name, data) in enumerate(all_metrics_data):
+                if len(metrics.get(period_key, [])) == 0:
                     continue
 
                 # Write company header
@@ -461,35 +585,47 @@ def export_to_csv(all_metrics_data, start_date, end_date):
 
                 # Create and write DataFrame
                 df_data = {
-                    'Quarter': quarterly_metrics['labels'],
-                    'Total BTC': quarterly_metrics['btc_balances'],
-                    'Max mNAV': quarterly_metrics['mnavs_max'],
-                    'Q-end mNAV': quarterly_metrics['mnavs'],
-                    'BTC/Share': quarterly_metrics['btc_per_shares'],
-                    'BTC Yield (%)': quarterly_metrics['btc_yields'],
-                    'Ann. Yield (%)': quarterly_metrics['annualized_yields'],
-                    'P/BYD': quarterly_metrics['p_byds']
+                    period_label: metrics['labels'],
+                    'Total BTC': metrics['btc_balances'],
+                    'Max mNAV': metrics['mnavs_max'],
+                    period_end_label: metrics['mnavs'],
+                    'BTC/Share': metrics['btc_per_shares'],
+                    'BTC Yield (%)': metrics['btc_yields'],
+                    'Ann. Yield (%)': metrics['annualized_yields'],
+                    'P/BYD': metrics['p_byds']
                 }
                 df = pd.DataFrame(df_data)
 
                 # Add overall metrics
-                if len(quarterly_metrics['quarter_ends']) > 0:
-                    first_q_year = int(quarterly_metrics['labels'][0].split()[1])
-                    first_q_num = int(quarterly_metrics['labels'][0].split()[0][1])
-                    first_q_start, _ = get_quarter_dates(first_q_year, first_q_num)
-                    last_q_end = quarterly_metrics['quarter_ends'][-1]
+                if len(metrics[period_key]) > 0:
+                    if is_monthly:
+                        # For monthly, parse month name and year
+                        first_label_parts = metrics['labels'][0].split()
+                        first_month_name = first_label_parts[0]
+                        first_year = int(first_label_parts[1])
+                        # Convert month name to number
+                        month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                        first_month = month_names.index(first_month_name) + 1
+                        first_period_start, _ = get_month_dates(first_year, first_month)
+                    else:
+                        # For quarterly
+                        first_q_year = int(metrics['labels'][0].split()[1])
+                        first_q_num = int(metrics['labels'][0].split()[0][1])
+                        first_period_start, _ = get_quarter_dates(first_q_year, first_q_num)
+                    
+                    last_period_end = metrics[period_key][-1]
 
-                    overall_result = calculate_btc_yield(data, first_q_start, last_q_end)
+                    overall_result = calculate_btc_yield(data, first_period_start, last_period_end)
                     if overall_result[0] is not None:
                         overall_btc_yield, overall_annual_yield, _ = overall_result
-                        last_mnav_at_end = find_mnav_for_date(data, last_q_end)
+                        last_mnav_at_end = find_mnav_for_date(data, last_period_end)
                         overall_p_byd, _, _ = calculate_p_byd_ratio(last_mnav_at_end, overall_annual_yield) if overall_annual_yield and overall_annual_yield > 0 and last_mnav_at_end else (None, None, None)
 
                         overall_row = {
-                            'Quarter': 'OVERALL',
+                            period_label: 'OVERALL',
                             'Total BTC': '',
                             'Max mNAV': '',
-                            'Q-end mNAV': '',
+                            period_end_label: '',
                             'BTC/Share': '',
                             'BTC Yield (%)': overall_btc_yield,
                             'Ann. Yield (%)': overall_annual_yield,
@@ -599,7 +735,7 @@ def plot_multiple_entities(all_metrics):
     plt.tight_layout()
     plt.show()
 
-def process_entity(entity_id, start_date, end_date, entity_names):
+def process_entity(entity_id, start_date, end_date, entity_names, is_monthly=False):
     """Process a single entity and return its metrics"""
     company_name = entity_names.get(entity_id, f"Entity {entity_id}")
 
@@ -611,32 +747,40 @@ def process_entity(entity_id, start_date, end_date, entity_names):
         print(f"Details: {str(e)}")
         return None, None, None
 
-    print(f"Calculating quarterly metrics from {start_date.strftime('%B %Y')} to {end_date.strftime('%B %Y')}...")
+    period_type = "monthly" if is_monthly else "quarterly"
+    print(f"Calculating {period_type} metrics from {start_date.strftime('%B %Y')} to {end_date.strftime('%B %Y')}...")
 
-    quarterly_metrics = calculate_quarterly_metrics(data, start_date, end_date)
+    if is_monthly:
+        metrics = calculate_monthly_metrics(data, start_date, end_date)
+    else:
+        metrics = calculate_quarterly_metrics(data, start_date, end_date)
 
-    return quarterly_metrics, company_name, data
+    return metrics, company_name, data
 
-def print_entity_table(quarterly_metrics, company_name, data):
+def print_entity_table(metrics, company_name, data, is_monthly=False):
     """Print the metrics table for a single entity"""
-    if len(quarterly_metrics['quarter_ends']) > 0:
-        print(f"\n{company_name} - Found data for {len(quarterly_metrics['quarter_ends'])} quarters:")
+    period_key = 'month_ends' if is_monthly else 'quarter_ends'
+    period_label = 'Month' if is_monthly else 'Quarter'
+    
+    if len(metrics.get(period_key, [])) > 0:
+        print(f"\n{company_name} - Found data for {len(metrics[period_key])} {period_label.lower()}s:")
 
         # Print summary table
         print("\n" + "="*140)
-        print(f"{'Quarter':<12} {'Total BTC':<12} {'Max mNAV':<10} {'Q-end mNAV':<11} {'BTC/Share':<12} {'BTC Yield':<10} {'Ann. Yield':<11} {'P/BYD':<8}")
+        period_end_label = 'M-end mNAV' if is_monthly else 'Q-end mNAV'
+        print(f"{period_label:<12} {'Total BTC':<12} {'Max mNAV':<10} {period_end_label:<11} {'BTC/Share':<12} {'BTC Yield':<10} {'Ann. Yield':<11} {'P/BYD':<8}")
         print("="*140)
 
-        for i in range(len(quarterly_metrics['labels'])):
-            label = quarterly_metrics['labels'][i]
-            btc_yield = quarterly_metrics['btc_yields'][i]
-            annual_yield = quarterly_metrics['annualized_yields'][i]
-            mnav_end = quarterly_metrics['mnavs'][i]
-            mnav_max = quarterly_metrics['mnavs_max'][i]
-            p_byd = quarterly_metrics['p_byds'][i]
-            stock_price = quarterly_metrics['stock_prices'][i]
-            btc_balance = quarterly_metrics['btc_balances'][i]
-            btc_per_share = quarterly_metrics['btc_per_shares'][i]
+        for i in range(len(metrics['labels'])):
+            label = metrics['labels'][i]
+            btc_yield = metrics['btc_yields'][i]
+            annual_yield = metrics['annualized_yields'][i]
+            mnav_end = metrics['mnavs'][i]
+            mnav_max = metrics['mnavs_max'][i]
+            p_byd = metrics['p_byds'][i]
+            stock_price = metrics['stock_prices'][i]
+            btc_balance = metrics['btc_balances'][i]
+            btc_per_share = metrics['btc_per_shares'][i]
 
             p_byd_str = f"{p_byd:>7.2f}" if p_byd is not None and not np.isnan(p_byd) else "    N/A"
             print(f"{label:<12} {btc_balance:>11,.0f} {mnav_max:>9.3f} {mnav_end:>10.3f} {btc_per_share:>11.6f} {btc_yield:>9.2f}% {annual_yield:>10.1f}% {p_byd_str}")
@@ -644,21 +788,32 @@ def print_entity_table(quarterly_metrics, company_name, data):
         print("="*140)
 
         # Calculate aggregate metrics for the entire period
-        if len(quarterly_metrics['quarter_ends']) > 0:
-            # Get overall BTC yield from first quarter start to last quarter end
-            first_q_year = int(quarterly_metrics['labels'][0].split()[1])
-            first_q_num = int(quarterly_metrics['labels'][0].split()[0][1])
-            first_q_start, _ = get_quarter_dates(first_q_year, first_q_num)
+        if len(metrics[period_key]) > 0:
+            # Get overall BTC yield from first period start to last period end
+            if is_monthly:
+                # For monthly, parse month name and year
+                first_label_parts = metrics['labels'][0].split()
+                first_month_name = first_label_parts[0]
+                first_year = int(first_label_parts[1])
+                # Convert month name to number
+                month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                first_month = month_names.index(first_month_name) + 1
+                first_period_start, _ = get_month_dates(first_year, first_month)
+            else:
+                # For quarterly
+                first_q_year = int(metrics['labels'][0].split()[1])
+                first_q_num = int(metrics['labels'][0].split()[0][1])
+                first_period_start, _ = get_quarter_dates(first_q_year, first_q_num)
 
-            last_q_end = quarterly_metrics['quarter_ends'][-1]
+            last_period_end = metrics[period_key][-1]
 
             # Calculate overall BTC yield
-            overall_result = calculate_btc_yield(data, first_q_start, last_q_end)
+            overall_result = calculate_btc_yield(data, first_period_start, last_period_end)
             if overall_result[0] is not None:
                 overall_btc_yield, overall_annual_yield, (start_bps, end_bps) = overall_result
 
                 # Get mNAV at the end of the period for P/BYD calculation
-                last_mnav_at_end = find_mnav_for_date(data, last_q_end)
+                last_mnav_at_end = find_mnav_for_date(data, last_period_end)
                 overall_p_byd, _, _ = calculate_p_byd_ratio(last_mnav_at_end, overall_annual_yield) if overall_annual_yield and overall_annual_yield > 0 and last_mnav_at_end else (None, None, None)
 
                 # Print aggregate row
@@ -668,7 +823,8 @@ def print_entity_table(quarterly_metrics, company_name, data):
                     print(f"{'OVERALL':<12} {'':>11} {'':>9} {'':>10} {'':>11} {overall_btc_yield:>9.2f}% {overall_annual_yield:>10.1f}% {'N/A':>7}")
             print("="*140)
     else:
-        print(f"\n{company_name} - No quarterly data available for the specified period.")
+        period_name = 'monthly' if is_monthly else 'quarterly'
+        print(f"\n{company_name} - No {period_name} data available for the specified period.")
 
 def main():
     # Parse command line arguments
@@ -677,6 +833,7 @@ def main():
     parser.add_argument('--start-date', type=str, help='Start date for calculations (YYYY-MM-DD format, default: 2024-01-01)')
     parser.add_argument('--entity-id', type=int, nargs='+', default=[1], help='Entity ID(s) from Bitcoin Treasuries API (default: 1 for MicroStrategy, 176 for Metaplanet). Can specify multiple IDs.')
     parser.add_argument('--csv', action='store_true', help='Export data to CSV file with timestamp')
+    parser.add_argument('--monthly', action='store_true', help='Calculate metrics monthly instead of quarterly')
     args = parser.parse_args()
 
     # Map entity IDs to company names for display
@@ -703,29 +860,30 @@ def main():
     all_metrics = []
     all_metrics_with_data = []  # For CSV export
     for entity_id in args.entity_id:
-        quarterly_metrics, company_name, data = process_entity(entity_id, start_date, end_date, entity_names)
+        metrics, company_name, data = process_entity(entity_id, start_date, end_date, entity_names, args.monthly)
 
-        if quarterly_metrics is None:
+        if metrics is None:
             continue
 
         # Store data and company name for plotting
-        all_metrics.append((quarterly_metrics, company_name))
-        all_metrics_with_data.append((quarterly_metrics, company_name, data))
+        all_metrics.append((metrics, company_name))
+        all_metrics_with_data.append((metrics, company_name, data))
 
         # Print table for this entity
-        print_entity_table(quarterly_metrics, company_name, data)
+        print_entity_table(metrics, company_name, data, args.monthly)
 
     # Export to CSV if --csv flag is provided
     if args.csv and len(all_metrics_with_data) > 0:
         print(f"\nExporting data to CSV...")
-        csv_filenames = export_to_csv(all_metrics_with_data, start_date, end_date)
+        csv_filenames = export_to_csv(all_metrics_with_data, start_date, end_date, args.monthly)
         print(f"Data exported to:")
         for filename in csv_filenames:
             print(f"  - {filename}")
 
     # Plot all entities together if --plot flag is provided
     if args.plot and len(all_metrics) > 0:
-        print(f"\nGenerating quarterly plots...")
+        period_type = "monthly" if args.monthly else "quarterly"
+        print(f"\nGenerating {period_type} plots...")
         if len(all_metrics) == 1:
             # Single entity - use original plot function
             plot_quarterly_metrics(all_metrics[0][0], title_prefix=all_metrics[0][1])
