@@ -439,7 +439,7 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False):
 
     period_key = 'month_ends' if is_monthly else 'quarter_ends'
     period_label = 'Monthly' if is_monthly else 'Quarterly'
-    
+
     dates = metrics_data.get(period_key, [])
     labels = metrics_data['labels']
 
@@ -512,7 +512,7 @@ def export_to_csv(all_metrics_data, start_date, end_date, is_monthly=False):
     period_key = 'month_ends' if is_monthly else 'quarter_ends'
     period_label = 'Month' if is_monthly else 'Quarter'
     period_end_label = 'M-end mNAV' if is_monthly else 'Q-end mNAV'
-    
+
     for metrics, company_name, data in all_metrics_data:
         if len(metrics.get(period_key, [])) == 0:
             continue
@@ -547,7 +547,7 @@ def export_to_csv(all_metrics_data, start_date, end_date, is_monthly=False):
                 first_q_year = int(metrics['labels'][0].split()[1])
                 first_q_num = int(metrics['labels'][0].split()[0][1])
                 first_period_start, _ = get_quarter_dates(first_q_year, first_q_num)
-            
+
             last_period_end = metrics[period_key][-1]
 
             overall_result = calculate_btc_yield(data, first_period_start, last_period_end)
@@ -619,7 +619,7 @@ def export_to_csv(all_metrics_data, start_date, end_date, is_monthly=False):
                         first_q_year = int(metrics['labels'][0].split()[1])
                         first_q_num = int(metrics['labels'][0].split()[0][1])
                         first_period_start, _ = get_quarter_dates(first_q_year, first_q_num)
-                    
+
                     last_period_end = metrics[period_key][-1]
 
                     overall_result = calculate_btc_yield(data, first_period_start, last_period_end)
@@ -737,10 +737,20 @@ def plot_multiple_entities(all_metrics, is_monthly=False):
     ax2.axhline(y=2, color='gray', linestyle='--', alpha=0.5, label='2 Years of Yield')
     ax2.legend(loc='best', fontsize=10)
 
-    # Format x-axis
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-    ax2.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
-    plt.xticks(rotation=45, ha='right')
+    # Format x-axis with period labels
+    all_dates = []
+    all_labels = []
+    for metrics_data, _ in all_metrics:
+        if len(metrics_data.get(period_key, [])) > 0:
+            all_dates.extend(metrics_data[period_key])
+            all_labels.extend(metrics_data['labels'])
+    
+    # Get unique dates and labels (in case of overlaps)
+    unique_data = sorted(set(zip(all_dates, all_labels)))
+    if unique_data:
+        dates, labels = zip(*unique_data)
+        ax2.set_xticks(dates)
+        ax2.set_xticklabels(labels, rotation=45, ha='right')
 
     plt.tight_layout()
     plt.show()
@@ -771,7 +781,7 @@ def print_entity_table(metrics, company_name, data, is_monthly=False):
     """Print the metrics table for a single entity"""
     period_key = 'month_ends' if is_monthly else 'quarter_ends'
     period_label = 'Month' if is_monthly else 'Quarter'
-    
+
     if len(metrics.get(period_key, [])) > 0:
         print(f"\n{company_name} - Found data for {len(metrics[period_key])} {period_label.lower()}s:")
 
@@ -851,7 +861,9 @@ def main():
         1: "MicroStrategy (MSTR)",
         5: "Block (XYZ)",
         176: "Metaplanet (3350.T)",
-        194: "Semler Scientific (SMLR)"
+        194: "Semler Scientific (SMLR)",
+        440: "The Smarter Web Company (SWC)",
+        644: "Sequans Communications (SQNS)",
     }
 
     # Parse start date from command line or use default
