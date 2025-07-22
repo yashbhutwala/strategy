@@ -464,8 +464,6 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False):
     ax2.set_ylabel('P/BYD Ratio', fontsize=12)
     ax2.set_title(f'{title_prefix} - {period_label} P/BYD Ratio', fontsize=14)
     ax2.grid(True, alpha=0.3)
-    ax2.axhline(y=1, color='b', linestyle='--', alpha=0.5, label='1 Year of Yield')
-    ax2.axhline(y=2, color='orange', linestyle='--', alpha=0.5, label='2 Years of Yield')
 
     # Add value labels
     for i, (date, p_byd) in enumerate(zip(dates, metrics_data['p_byds'])):
@@ -476,8 +474,6 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False):
                         xytext=(0,10),
                         ha='center',
                         fontsize=9)
-
-    ax2.legend()
 
     # Plot Stock Price
     ax3.plot(dates, metrics_data['stock_prices'], 'go-', linewidth=2, markersize=8)
@@ -776,8 +772,6 @@ def plot_multiple_entities(all_metrics, is_monthly=False):
     ax2.set_ylabel('P/BYD Ratio', fontsize=12)
     ax2.set_title(f'{period_label} P/BYD Ratio Comparison', fontsize=14)
     ax2.grid(True, alpha=0.3)
-    ax2.axhline(y=1, color='black', linestyle='--', alpha=0.5, label='1 Year of Yield')
-    ax2.axhline(y=2, color='gray', linestyle='--', alpha=0.5, label='2 Years of Yield')
     ax2.legend(loc='best', fontsize=10)
 
     # Configure Stock Price plot
