@@ -428,23 +428,30 @@ def calculate_quarterly_metrics(data, start_date, end_date):
     }
 
 def plot_quarterly_metrics(quarterly_data, title_prefix="MicroStrategy"):
+    """Backward compatibility wrapper for plot_metrics"""
+    return plot_metrics(quarterly_data, title_prefix, is_monthly=False)
+
+def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False):
     """
-    Plot quarterly Bitcoin Yield and P/BYD ratios
+    Plot Bitcoin Yield and P/BYD ratios (quarterly or monthly)
     """
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
-    dates = quarterly_data['quarter_ends']
-    labels = quarterly_data['labels']
+    period_key = 'month_ends' if is_monthly else 'quarter_ends'
+    period_label = 'Monthly' if is_monthly else 'Quarterly'
+    
+    dates = metrics_data.get(period_key, [])
+    labels = metrics_data['labels']
 
-    # Plot Bitcoin Yield (quarterly)
-    ax1.plot(dates, quarterly_data['btc_yields'], 'bo-', linewidth=2, markersize=8, label='Quarterly BTC Yield')
+    # Plot Bitcoin Yield
+    ax1.plot(dates, metrics_data['btc_yields'], 'bo-', linewidth=2, markersize=8, label=f'{period_label} BTC Yield')
     ax1.set_ylabel('Bitcoin Yield (%)', fontsize=12)
-    ax1.set_title(f'{title_prefix} - Quarterly Bitcoin Yield', fontsize=14)
+    ax1.set_title(f'{title_prefix} - {period_label} Bitcoin Yield', fontsize=14)
     ax1.grid(True, alpha=0.3)
     ax1.legend(loc='upper left')
 
     # Add value labels on points
-    for i, (date, yield_val, label) in enumerate(zip(dates, quarterly_data['btc_yields'], labels)):
+    for i, (date, yield_val, label) in enumerate(zip(dates, metrics_data['btc_yields'], labels)):
         ax1.annotate(f'{yield_val:.1f}%',
                     (date, yield_val),
                     textcoords="offset points",
@@ -453,16 +460,16 @@ def plot_quarterly_metrics(quarterly_data, title_prefix="MicroStrategy"):
                     fontsize=9)
 
     # Plot P/BYD Ratio
-    ax2.plot(dates, quarterly_data['p_byds'], 'ro-', linewidth=2, markersize=8)
+    ax2.plot(dates, metrics_data['p_byds'], 'ro-', linewidth=2, markersize=8)
     ax2.set_ylabel('P/BYD Ratio', fontsize=12)
-    ax2.set_title(f'{title_prefix} - Quarterly P/BYD Ratio', fontsize=14)
+    ax2.set_title(f'{title_prefix} - {period_label} P/BYD Ratio', fontsize=14)
     ax2.grid(True, alpha=0.3)
     ax2.axhline(y=1, color='b', linestyle='--', alpha=0.5, label='1 Year of Yield')
     ax2.axhline(y=2, color='orange', linestyle='--', alpha=0.5, label='2 Years of Yield')
 
     # Add value labels
-    for i, (date, p_byd) in enumerate(zip(dates, quarterly_data['p_byds'])):
-        if not np.isnan(p_byd):
+    for i, (date, p_byd) in enumerate(zip(dates, metrics_data['p_byds'])):
+        if p_byd is not None and not np.isnan(p_byd):
             ax2.annotate(f'{p_byd:.2f}',
                         (date, p_byd),
                         textcoords="offset points",
@@ -472,13 +479,13 @@ def plot_quarterly_metrics(quarterly_data, title_prefix="MicroStrategy"):
 
     ax2.legend()
 
-    # Format x-axis with quarter labels
+    # Format x-axis with period labels
     ax2.set_xticks(dates)
     ax2.set_xticklabels(labels, rotation=45, ha='right')
 
     # Add mNAV values as text
     fig.text(0.02, 0.98, 'mNAV values:', transform=fig.transFigure, fontsize=10, verticalalignment='top')
-    mnav_text = '\n'.join([f'{label}: {mnav:.3f}' for label, mnav in zip(labels, quarterly_data['mnavs'])])
+    mnav_text = '\n'.join([f'{label}: {mnav:.3f}' for label, mnav in zip(labels, metrics_data['mnavs'])])
     fig.text(0.02, 0.95, mnav_text, transform=fig.transFigure, fontsize=9, verticalalignment='top')
 
     plt.tight_layout()
@@ -640,9 +647,9 @@ def export_to_csv(all_metrics_data, start_date, end_date, is_monthly=False):
 
     return filenames
 
-def plot_multiple_entities(all_metrics):
+def plot_multiple_entities(all_metrics, is_monthly=False):
     """
-    Plot quarterly metrics for multiple entities on the same charts
+    Plot metrics for multiple entities on the same charts (quarterly or monthly)
     """
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
 
@@ -650,25 +657,28 @@ def plot_multiple_entities(all_metrics):
     colors = ['b', 'r', 'g', 'orange', 'purple', 'brown', 'pink', 'gray']
     markers = ['o', 's', '^', 'D', 'v', '*', 'p', 'h']
 
+    period_key = 'month_ends' if is_monthly else 'quarter_ends'
+    period_label = 'Monthly' if is_monthly else 'Quarterly'
+
     # Plot each entity
-    for idx, (quarterly_data, company_name) in enumerate(all_metrics):
-        if len(quarterly_data['quarter_ends']) == 0:
+    for idx, (metrics_data, company_name) in enumerate(all_metrics):
+        if len(metrics_data.get(period_key, [])) == 0:
             continue
 
         color = colors[idx % len(colors)]
         marker = markers[idx % len(markers)]
 
-        dates = quarterly_data['quarter_ends']
-        labels = quarterly_data['labels']
+        dates = metrics_data[period_key]
+        labels = metrics_data['labels']
 
-        # Plot Bitcoin Yield (quarterly)
-        ax1.plot(dates, quarterly_data['btc_yields'],
+        # Plot Bitcoin Yield
+        ax1.plot(dates, metrics_data['btc_yields'],
                 color=color, marker=marker, linestyle='-',
                 linewidth=2, markersize=8, label=f'{company_name} - BTC Yield')
 
         # Add value labels on points (only for first and last few to avoid clutter)
         if len(dates) <= 6:  # Show all labels if 6 or fewer points
-            for i, (date, yield_val) in enumerate(zip(dates, quarterly_data['btc_yields'])):
+            for i, (date, yield_val) in enumerate(zip(dates, metrics_data['btc_yields'])):
                 ax1.annotate(f'{yield_val:.1f}%',
                             (date, yield_val),
                             textcoords="offset points",
@@ -678,8 +688,8 @@ def plot_multiple_entities(all_metrics):
                             color=color)
         else:  # Show only first and last labels if more than 6 points
             for i in [0, len(dates)-1]:
-                ax1.annotate(f'{quarterly_data["btc_yields"][i]:.1f}%',
-                            (dates[i], quarterly_data['btc_yields'][i]),
+                ax1.annotate(f'{metrics_data["btc_yields"][i]:.1f}%',
+                            (dates[i], metrics_data['btc_yields'][i]),
                             textcoords="offset points",
                             xytext=(0,10),
                             ha='center',
@@ -687,14 +697,14 @@ def plot_multiple_entities(all_metrics):
                             color=color)
 
         # Plot P/BYD Ratio
-        ax2.plot(dates, quarterly_data['p_byds'],
+        ax2.plot(dates, metrics_data['p_byds'],
                 color=color, marker=marker, linestyle='-',
                 linewidth=2, markersize=8, label=f'{company_name} - P/BYD')
 
         # Add value labels (selective to avoid clutter)
         if len(dates) <= 6:
-            for i, (date, p_byd) in enumerate(zip(dates, quarterly_data['p_byds'])):
-                if not np.isnan(p_byd):
+            for i, (date, p_byd) in enumerate(zip(dates, metrics_data['p_byds'])):
+                if p_byd is not None and not np.isnan(p_byd):
                     ax2.annotate(f'{p_byd:.2f}',
                                 (date, p_byd),
                                 textcoords="offset points",
@@ -704,9 +714,9 @@ def plot_multiple_entities(all_metrics):
                                 color=color)
         else:
             for i in [0, len(dates)-1]:
-                if not np.isnan(quarterly_data['p_byds'][i]):
-                    ax2.annotate(f'{quarterly_data["p_byds"][i]:.2f}',
-                                (dates[i], quarterly_data['p_byds'][i]),
+                if metrics_data['p_byds'][i] is not None and not np.isnan(metrics_data['p_byds'][i]):
+                    ax2.annotate(f'{metrics_data["p_byds"][i]:.2f}',
+                                (dates[i], metrics_data['p_byds'][i]),
                                 textcoords="offset points",
                                 xytext=(0,10),
                                 ha='center',
@@ -715,13 +725,13 @@ def plot_multiple_entities(all_metrics):
 
     # Configure Bitcoin Yield plot
     ax1.set_ylabel('Bitcoin Yield (%)', fontsize=12)
-    ax1.set_title('Quarterly Bitcoin Yield Comparison', fontsize=14)
+    ax1.set_title(f'{period_label} Bitcoin Yield Comparison', fontsize=14)
     ax1.grid(True, alpha=0.3)
     ax1.legend(loc='best', fontsize=10)
 
     # Configure P/BYD plot
     ax2.set_ylabel('P/BYD Ratio', fontsize=12)
-    ax2.set_title('Quarterly P/BYD Ratio Comparison', fontsize=14)
+    ax2.set_title(f'{period_label} P/BYD Ratio Comparison', fontsize=14)
     ax2.grid(True, alpha=0.3)
     ax2.axhline(y=1, color='black', linestyle='--', alpha=0.5, label='1 Year of Yield')
     ax2.axhline(y=2, color='gray', linestyle='--', alpha=0.5, label='2 Years of Yield')
@@ -886,10 +896,10 @@ def main():
         print(f"\nGenerating {period_type} plots...")
         if len(all_metrics) == 1:
             # Single entity - use original plot function
-            plot_quarterly_metrics(all_metrics[0][0], title_prefix=all_metrics[0][1])
+            plot_metrics(all_metrics[0][0], title_prefix=all_metrics[0][1], is_monthly=args.monthly)
         else:
             # Multiple entities - create combined plot
-            plot_multiple_entities(all_metrics)
+            plot_multiple_entities(all_metrics, is_monthly=args.monthly)
 
 if __name__ == "__main__":
     main()
