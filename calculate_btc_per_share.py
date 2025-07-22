@@ -427,11 +427,11 @@ def calculate_quarterly_metrics(data, start_date, end_date):
         'btc_per_shares': btc_per_shares
     }
 
-def plot_quarterly_metrics(quarterly_data, title_prefix="MicroStrategy"):
+def plot_quarterly_metrics(quarterly_data, title_prefix="MicroStrategy", data=None):
     """Backward compatibility wrapper for plot_metrics"""
-    return plot_metrics(quarterly_data, title_prefix, is_monthly=False)
+    return plot_metrics(quarterly_data, title_prefix, is_monthly=False, data=data)
 
-def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False):
+def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False, data=None):
     """
     Plot Bitcoin Yield, P/BYD ratios, and Stock Price (quarterly or monthly)
     """
@@ -458,6 +458,35 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False):
                     xytext=(0,10),
                     ha='center',
                     fontsize=9)
+    
+    # Calculate and plot overall values if data is provided
+    if data is not None and len(dates) > 0:
+        # Get the date range for overall calculation
+        if is_monthly:
+            # For monthly, parse month name and year
+            first_label_parts = labels[0].split()
+            first_month_name = first_label_parts[0]
+            first_year = int(first_label_parts[1])
+            month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            first_month = month_names.index(first_month_name) + 1
+            first_period_start, _ = get_month_dates(first_year, first_month)
+        else:
+            # For quarterly
+            first_q_year = int(labels[0].split()[1])
+            first_q_num = int(labels[0].split()[0][1])
+            first_period_start, _ = get_quarter_dates(first_q_year, first_q_num)
+        
+        last_period_end = dates[-1]
+        
+        # Calculate overall BTC yield
+        overall_result = calculate_btc_yield(data, first_period_start, last_period_end)
+        if overall_result[0] is not None:
+            overall_btc_yield, overall_annual_yield, _ = overall_result
+            
+            # Add horizontal line for overall BTC yield
+            ax1.axhline(y=overall_btc_yield, color='black', linestyle='--', alpha=0.7, 
+                       label=f'Overall: {overall_btc_yield:.1f}%')
+            ax1.legend(loc='best')
 
     # Plot P/BYD Ratio
     ax2.plot(dates, metrics_data['p_byds'], 'ro-', linewidth=2, markersize=8)
@@ -474,6 +503,17 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False):
                         xytext=(0,10),
                         ha='center',
                         fontsize=9)
+    
+    # Add overall P/BYD line if we calculated overall values
+    if data is not None and len(dates) > 0 and 'overall_result' in locals() and overall_result[0] is not None:
+        # Calculate overall P/BYD
+        last_mnav_at_end = find_mnav_for_date(data, last_period_end)
+        if overall_annual_yield and overall_annual_yield > 0 and last_mnav_at_end:
+            overall_p_byd, _, _ = calculate_p_byd_ratio(last_mnav_at_end, overall_annual_yield)
+            if overall_p_byd is not None:
+                ax2.axhline(y=overall_p_byd, color='black', linestyle='--', alpha=0.7,
+                           label=f'Overall: {overall_p_byd:.2f}')
+                ax2.legend(loc='best')
 
     # Plot Stock Price
     ax3.plot(dates, metrics_data['stock_prices'], 'go-', linewidth=2, markersize=8)
@@ -659,9 +699,14 @@ def export_to_csv(all_metrics_data, start_date, end_date, is_monthly=False):
 
     return filenames
 
-def plot_multiple_entities(all_metrics, is_monthly=False):
+def plot_multiple_entities(all_metrics, is_monthly=False, all_data=None):
     """
     Plot metrics for multiple entities on the same charts (quarterly or monthly)
+    
+    Args:
+        all_metrics: List of tuples (metrics_data, company_name)
+        is_monthly: Whether the data is monthly or quarterly
+        all_data: List of data DataFrames corresponding to each entity in all_metrics
     """
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
 
@@ -761,6 +806,53 @@ def plot_multiple_entities(all_metrics, is_monthly=False):
                                 ha='center',
                                 fontsize=8,
                                 color=color)
+
+    # Add overall lines for each entity if data is provided
+    if all_data is not None and len(all_data) == len(all_metrics):
+        overall_line_colors = ['black', 'darkred', 'darkgreen', 'darkorange', 'darkviolet', 'darkgoldenrod', 'deeppink', 'darkgray']
+        
+        for idx, ((metrics_data, company_name), data) in enumerate(zip(all_metrics, all_data)):
+            if len(metrics_data.get(period_key, [])) == 0:
+                continue
+                
+            dates = metrics_data[period_key]
+            labels = metrics_data['labels']
+            
+            if len(dates) > 0:
+                # Parse the first period start date
+                if is_monthly:
+                    # For monthly, parse month name and year
+                    first_label_parts = labels[0].split()
+                    first_month_name = first_label_parts[0]
+                    first_year = int(first_label_parts[1])
+                    month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                    first_month = month_names.index(first_month_name) + 1
+                    first_period_start, _ = get_month_dates(first_year, first_month)
+                else:
+                    # For quarterly
+                    first_q_year = int(labels[0].split()[1])
+                    first_q_num = int(labels[0].split()[0][1])
+                    first_period_start, _ = get_quarter_dates(first_q_year, first_q_num)
+                
+                last_period_end = dates[-1]
+                
+                # Calculate overall BTC yield
+                overall_result = calculate_btc_yield(data, first_period_start, last_period_end)
+                if overall_result[0] is not None:
+                    overall_btc_yield, overall_annual_yield, _ = overall_result
+                    line_color = overall_line_colors[idx % len(overall_line_colors)]
+                    
+                    # Add horizontal line for overall BTC yield
+                    ax1.axhline(y=overall_btc_yield, color=line_color, linestyle='--', alpha=0.7, 
+                               label=f'{company_name} Overall: {overall_btc_yield:.1f}%')
+                    
+                    # Calculate overall P/BYD
+                    last_mnav_at_end = find_mnav_for_date(data, last_period_end)
+                    if overall_annual_yield and overall_annual_yield > 0 and last_mnav_at_end:
+                        overall_p_byd, _, _ = calculate_p_byd_ratio(last_mnav_at_end, overall_annual_yield)
+                        if overall_p_byd is not None:
+                            ax2.axhline(y=overall_p_byd, color=line_color, linestyle='--', alpha=0.7,
+                                       label=f'{company_name} Overall: {overall_p_byd:.2f}')
 
     # Configure Bitcoin Yield plot
     ax1.set_ylabel('Bitcoin Yield (%)', fontsize=12)
@@ -950,11 +1042,12 @@ def main():
         period_type = "monthly" if args.monthly else "quarterly"
         print(f"\nGenerating {period_type} plots...")
         if len(all_metrics) == 1:
-            # Single entity - use original plot function
-            plot_metrics(all_metrics[0][0], title_prefix=all_metrics[0][1], is_monthly=args.monthly)
+            # Single entity - use original plot function with data
+            plot_metrics(all_metrics[0][0], title_prefix=all_metrics[0][1], is_monthly=args.monthly, data=all_metrics_with_data[0][2])
         else:
-            # Multiple entities - create combined plot
-            plot_multiple_entities(all_metrics, is_monthly=args.monthly)
+            # Multiple entities - create combined plot with data
+            all_data = [item[2] for item in all_metrics_with_data]
+            plot_multiple_entities(all_metrics, is_monthly=args.monthly, all_data=all_data)
 
 if __name__ == "__main__":
     main()
