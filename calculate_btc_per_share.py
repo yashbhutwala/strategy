@@ -663,9 +663,9 @@ def print_entity_table(quarterly_metrics, company_name, data):
 
                 # Print aggregate row
                 if overall_p_byd is not None:
-                    print(f"{'OVERALL':<12} {'':>12} {'':>10} {'':>11} {'':>12} {overall_btc_yield:>9.2f}% {overall_annual_yield:>10.1f}% {overall_p_byd:>7.2f}")
+                    print(f"{'OVERALL':<12} {'':>11} {'':>9} {'':>10} {'':>11} {overall_btc_yield:>9.2f}% {overall_annual_yield:>10.1f}% {overall_p_byd:>7.2f}")
                 else:
-                    print(f"{'OVERALL':<12} {'':>12} {'':>10} {'':>11} {'':>12} {overall_btc_yield:>9.2f}% {overall_annual_yield:>10.1f}% {'N/A':>7}")
+                    print(f"{'OVERALL':<12} {'':>11} {'':>9} {'':>10} {'':>11} {overall_btc_yield:>9.2f}% {overall_annual_yield:>10.1f}% {'N/A':>7}")
             print("="*140)
     else:
         print(f"\n{company_name} - No quarterly data available for the specified period.")
