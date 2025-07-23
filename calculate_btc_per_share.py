@@ -120,41 +120,41 @@ def get_month_dates(year, month):
 def check_month_data_coverage(data, year, month, coverage_threshold=0.6):
     """
     Check if data is available for more than the specified threshold of days in a month
-    
+
     Args:
         data: The entity data containing timestamps
         year: Year of the month to check
         month: Month number (1-12)
         coverage_threshold: Minimum fraction of days with data required (default: 0.6 for 60%)
-    
+
     Returns:
         tuple: (has_sufficient_coverage, actual_coverage_ratio, days_with_data, total_days)
     """
     from calendar import monthrange
-    
+
     # Get month boundaries
     start_date = datetime(year, month, 1, tzinfo=timezone.utc)
     total_days = monthrange(year, month)[1]
     end_date = datetime(year, month, total_days, tzinfo=timezone.utc)
-    
+
     start_timestamp = int(start_date.timestamp() * 1000)
     end_timestamp = int(end_date.timestamp() * 1000)
-    
+
     # Check available data points in the month
     # We'll check stock prices as they're recorded daily
     stock_prices = data.get('stockPrices', [])
-    
+
     days_with_data = set()
     for timestamp, price in stock_prices:
         if start_timestamp <= timestamp <= end_timestamp:
             # Convert timestamp to date
             date = datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc)
             days_with_data.add(date.date())
-    
+
     # Calculate coverage
     actual_coverage = len(days_with_data) / total_days
     has_sufficient_coverage = actual_coverage >= coverage_threshold
-    
+
     return has_sufficient_coverage, actual_coverage, len(days_with_data), total_days
 
 def find_stock_price_for_date(data, target_date):
@@ -300,7 +300,7 @@ def calculate_monthly_metrics(data, start_date, end_date):
 
         # Get month boundaries
         m_start, m_end = get_month_dates(year, month)
-        
+
         # Create month label
         month_name = m_start.strftime('%b')
         label = f"{month_name} {year}"
@@ -505,7 +505,7 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False, d
                     xytext=(0,10),
                     ha='center',
                     fontsize=9)
-    
+
     # Calculate and plot overall values if data is provided
     if data is not None and len(dates) > 0:
         # Get the date range for overall calculation
@@ -522,16 +522,16 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False, d
             first_q_year = int(labels[0].split()[1])
             first_q_num = int(labels[0].split()[0][1])
             first_period_start, _ = get_quarter_dates(first_q_year, first_q_num)
-        
+
         last_period_end = dates[-1]
-        
+
         # Calculate overall BTC yield
         overall_result = calculate_btc_yield(data, first_period_start, last_period_end)
         if overall_result[0] is not None:
             overall_btc_yield, overall_annual_yield, _ = overall_result
-            
+
             # Add horizontal line for overall BTC yield
-            ax1.axhline(y=overall_btc_yield, color='black', linestyle='--', alpha=0.7, 
+            ax1.axhline(y=overall_btc_yield, color='black', linestyle='--', alpha=0.7,
                        label=f'Overall: {overall_btc_yield:.1f}%')
             ax1.legend(loc='best')
 
@@ -550,7 +550,7 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False, d
                         xytext=(0,10),
                         ha='center',
                         fontsize=9)
-    
+
     # Add overall P/BYD line if we calculated overall values
     if data is not None and len(dates) > 0 and 'overall_result' in locals() and overall_result[0] is not None:
         # Calculate overall P/BYD
@@ -567,7 +567,7 @@ def plot_metrics(metrics_data, title_prefix="MicroStrategy", is_monthly=False, d
     ax3.set_ylabel('Stock Price ($)', fontsize=12)
     ax3.set_title(f'{title_prefix} - {period_label} Stock Price', fontsize=14)
     ax3.grid(True, alpha=0.3)
-    
+
     # Add value labels on stock price points
     for i, (date, price, label) in enumerate(zip(dates, metrics_data['stock_prices'], labels)):
         if price is not None:
@@ -749,7 +749,7 @@ def export_to_csv(all_metrics_data, start_date, end_date, is_monthly=False):
 def plot_multiple_entities(all_metrics, is_monthly=False, all_data=None):
     """
     Plot metrics for multiple entities on the same charts (quarterly or monthly)
-    
+
     Args:
         all_metrics: List of tuples (metrics_data, company_name)
         is_monthly: Whether the data is monthly or quarterly
@@ -826,12 +826,12 @@ def plot_multiple_entities(all_metrics, is_monthly=False, all_data=None):
                                 ha='center',
                                 fontsize=8,
                                 color=color)
-        
+
         # Plot Stock Price
         ax3.plot(dates, metrics_data['stock_prices'],
                 color=color, marker=marker, linestyle='-',
                 linewidth=2, markersize=8, label=f'{company_name} - Stock Price')
-        
+
         # Add value labels (selective to avoid clutter)
         if len(dates) <= 6:
             for i, (date, price) in enumerate(zip(dates, metrics_data['stock_prices'])):
@@ -857,14 +857,14 @@ def plot_multiple_entities(all_metrics, is_monthly=False, all_data=None):
     # Add overall lines for each entity if data is provided
     if all_data is not None and len(all_data) == len(all_metrics):
         overall_line_colors = ['black', 'darkred', 'darkgreen', 'darkorange', 'darkviolet', 'darkgoldenrod', 'deeppink', 'darkgray']
-        
+
         for idx, ((metrics_data, company_name), data) in enumerate(zip(all_metrics, all_data)):
             if len(metrics_data.get(period_key, [])) == 0:
                 continue
-                
+
             dates = metrics_data[period_key]
             labels = metrics_data['labels']
-            
+
             if len(dates) > 0:
                 # Parse the first period start date
                 if is_monthly:
@@ -880,19 +880,19 @@ def plot_multiple_entities(all_metrics, is_monthly=False, all_data=None):
                     first_q_year = int(labels[0].split()[1])
                     first_q_num = int(labels[0].split()[0][1])
                     first_period_start, _ = get_quarter_dates(first_q_year, first_q_num)
-                
+
                 last_period_end = dates[-1]
-                
+
                 # Calculate overall BTC yield
                 overall_result = calculate_btc_yield(data, first_period_start, last_period_end)
                 if overall_result[0] is not None:
                     overall_btc_yield, overall_annual_yield, _ = overall_result
                     line_color = overall_line_colors[idx % len(overall_line_colors)]
-                    
+
                     # Add horizontal line for overall BTC yield
-                    ax1.axhline(y=overall_btc_yield, color=line_color, linestyle='--', alpha=0.7, 
+                    ax1.axhline(y=overall_btc_yield, color=line_color, linestyle='--', alpha=0.7,
                                label=f'{company_name} Overall: {overall_btc_yield:.1f}%')
-                    
+
                     # Calculate overall P/BYD
                     last_mnav_at_end = find_mnav_for_date(data, last_period_end)
                     if overall_annual_yield and overall_annual_yield > 0 and last_mnav_at_end:
@@ -926,7 +926,7 @@ def plot_multiple_entities(all_metrics, is_monthly=False, all_data=None):
         if len(metrics_data.get(period_key, [])) > 0:
             all_dates.extend(metrics_data[period_key])
             all_labels.extend(metrics_data['labels'])
-    
+
     # Get unique dates and labels (in case of overlaps)
     unique_data = sorted(set(zip(all_dates, all_labels)))
     if unique_data:
@@ -1044,6 +1044,7 @@ def main():
         5: "Block (XYZ)",
         176: "Metaplanet (3350.T)",
         194: "Semler Scientific (SMLR)",
+        295: "The Blockchain Group (ALTBG)",
         440: "The Smarter Web Company (SWC)",
         644: "Sequans Communications (SQNS)",
     }
