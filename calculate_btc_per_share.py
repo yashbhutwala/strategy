@@ -117,6 +117,46 @@ def get_month_dates(year, month):
     end = datetime(year, month, last_day, tzinfo=timezone.utc)
     return start, end
 
+def check_month_data_coverage(data, year, month, coverage_threshold=0.6):
+    """
+    Check if data is available for more than the specified threshold of days in a month
+    
+    Args:
+        data: The entity data containing timestamps
+        year: Year of the month to check
+        month: Month number (1-12)
+        coverage_threshold: Minimum fraction of days with data required (default: 0.6 for 60%)
+    
+    Returns:
+        tuple: (has_sufficient_coverage, actual_coverage_ratio, days_with_data, total_days)
+    """
+    from calendar import monthrange
+    
+    # Get month boundaries
+    start_date = datetime(year, month, 1, tzinfo=timezone.utc)
+    total_days = monthrange(year, month)[1]
+    end_date = datetime(year, month, total_days, tzinfo=timezone.utc)
+    
+    start_timestamp = int(start_date.timestamp() * 1000)
+    end_timestamp = int(end_date.timestamp() * 1000)
+    
+    # Check available data points in the month
+    # We'll check stock prices as they're recorded daily
+    stock_prices = data.get('stockPrices', [])
+    
+    days_with_data = set()
+    for timestamp, price in stock_prices:
+        if start_timestamp <= timestamp <= end_timestamp:
+            # Convert timestamp to date
+            date = datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc)
+            days_with_data.add(date.date())
+    
+    # Calculate coverage
+    actual_coverage = len(days_with_data) / total_days
+    has_sufficient_coverage = actual_coverage >= coverage_threshold
+    
+    return has_sufficient_coverage, actual_coverage, len(days_with_data), total_days
+
 def find_stock_price_for_date(data, target_date):
     """Find stock price for a specific date"""
     target_timestamp = int(target_date.timestamp() * 1000)
@@ -260,14 +300,21 @@ def calculate_monthly_metrics(data, start_date, end_date):
 
         # Get month boundaries
         m_start, m_end = get_month_dates(year, month)
-
-        # Skip incomplete months
-        if m_end > today:
-            break
-
+        
         # Create month label
         month_name = m_start.strftime('%b')
         label = f"{month_name} {year}"
+
+        # For current month, check if we have enough data coverage
+        if m_end > today:
+            # Check data coverage for partial month
+            has_coverage, coverage_ratio, days_with_data, total_days = check_month_data_coverage(data, year, month)
+            if not has_coverage:
+                # Not enough data for this month yet
+                break
+            # If we have enough coverage, use today as the end date
+            print(f"  Including partial month {label} with {days_with_data}/{total_days} days ({coverage_ratio:.1%} coverage)")
+            m_end = today
 
         # Calculate BTC Yield for the month
         yield_result = calculate_btc_yield(data, m_start, m_end)
