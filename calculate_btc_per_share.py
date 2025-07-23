@@ -1032,7 +1032,7 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Calculate quarterly BTC metrics for companies holding Bitcoin')
     parser.add_argument('--plot', action='store_true', help='Show plots of quarterly metrics')
-    parser.add_argument('--start-date', type=str, help='Start date for calculations (YYYY-MM-DD format, default: 2024-01-01)')
+    parser.add_argument('--start-date', type=str, help='Start date for calculations (YYYY-MM-DD format, default: 2025-03-01)')
     parser.add_argument('--entity-id', type=int, nargs='+', default=[1], help='Entity ID(s) from Bitcoin Treasuries API (default: 1 for MicroStrategy, 176 for Metaplanet). Can specify multiple IDs.')
     parser.add_argument('--csv', action='store_true', help='Export data to CSV file with timestamp')
     parser.add_argument('--monthly', action='store_true', help='Calculate metrics monthly instead of quarterly')
@@ -1057,7 +1057,7 @@ def main():
             print(f"Error: Invalid date format '{args.start_date}'. Please use YYYY-MM-DD format.")
             return
     else:
-        start_date = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        start_date = datetime(2025, 3, 1, tzinfo=timezone.utc)
 
     end_date = datetime.now(timezone.utc)
 
